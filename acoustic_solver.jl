@@ -59,7 +59,7 @@ function dy_backward!(dA::AbstractMatrix, A::AbstractMatrix, h)
 end
 
 # main program
-function acoustic_solver(c, rho, Nx, dx, Ny, dy, Nt, dt, source, source_position, receiver_position; pml_len=20, pml_coef=200)
+function acoustic_solver(c, rho, Nx, dx, Ny, dy, Nt, dt, source, source_position, receiver_position; pml_len=30, pml_coef=50)
     if size(source_position,2) != 2
         error("Please check the size of source_position, which should be a Ns times 2 matrix.")
     end
@@ -71,9 +71,15 @@ function acoustic_solver(c, rho, Nx, dx, Ny, dy, Nt, dt, source, source_position
     end
     
     # prepare PML coef
+    # case 1: linear
     # pml_value = range(0, stop=pml_coef, length=pml_len);
-    # pml_value = pml_coef .* exp.(-1 ./ range(0, stop=1, length=pml_len).^1)
-    pml_value = pml_coef .* exp.(-1 ./ range(0, stop=1, length=pml_len).^2)
+    # case 2
+    pml_value = exp.(-1 ./ range(0, stop=1, length=pml_len).^1)
+    pml_value = pml_value ./ maximum(pml_value) * pml_coef
+    # case 3
+    # pml_value = exp.(-1 ./ range(0, stop=2, length=pml_len).^2)
+    # pml_value = pml_value ./ maximum(pml_value) * pml_coef
+
     Nx_pml = Nx + 2*pml_len;
     Ny_pml = Ny + 2*pml_len;
     
@@ -97,6 +103,11 @@ function acoustic_solver(c, rho, Nx, dx, Ny, dy, Nt, dt, source, source_position
         for i = 1:receiver_num
             receiver_position_pml_vec[i] = receiver_position_pml[i,1] + (receiver_position_pml[i,2]-1)*Nx_pml
         end
+    end
+    # source integration
+    source_int = similar(source)
+    for i = 1:Nt
+        source_int[end-i+1, :] = sum(source[1:end-i+1,:], dims=1)
     end
     
     # Coef
@@ -142,16 +153,16 @@ function acoustic_solver(c, rho, Nx, dx, Ny, dy, Nt, dt, source, source_position
     # main loop
     for iter = 2:Nt
 
-        dx_forward!(dxvx1_f, vx1, h)
-        dy_forward!(dyvy1_f, vy1, h)
-        dx_backward!(dxvx1_b, vx1, h)
-        dy_backward!(dyvy1_b, vy1, h)
+        dx_forward!(dxvx1_f, vx1, dx)
+        dy_forward!(dyvy1_f, vy1, dy)
+        dx_backward!(dxvx1_b, vx1, dx)
+        dy_backward!(dyvy1_b, vy1, dy)
 
         @. u2 = u1 + dt * (-(sigma_x+sigma_y)*u1 + b*(dxvx1_f+dyvy1_f) + phi1 + psi1)
-        u2[source_position_pml_vec] .+= source[iter,:]
+        u2[source_position_pml_vec] .+= source_int[iter,:]
 
-        dx_backward!(dxu2, u2, h)
-        dy_backward!(dyu2, u2, h)
+        dx_backward!(dxu2, u2, dx)
+        dy_backward!(dyu2, u2, dy)
 
         @. vx2 = vx1 + dt * (a*dxu2 - sigma_x*vx1)
         @. vy2 = vy1 + dt * (a*dyu2 - sigma_y*vy1)
@@ -170,7 +181,7 @@ function acoustic_solver(c, rho, Nx, dx, Ny, dy, Nt, dt, source, source_position
     return U, data
 end
 
-function acoustic_solver_no_wavefield(c, rho, Nx, dx, Ny, dy, Nt, dt, source, source_position, receiver_position; pml_len=20, pml_coef=200)
+function acoustic_solver_no_wavefield(c, rho, Nx, dx, Ny, dy, Nt, dt, source, source_position, receiver_position; pml_len=30, pml_coef=50)
     if size(source_position,2) != 2
         error("Please check the size of source_position, which should be a Ns times 2 matrix.")
     end
@@ -182,9 +193,15 @@ function acoustic_solver_no_wavefield(c, rho, Nx, dx, Ny, dy, Nt, dt, source, so
     end
     
     # prepare PML coef
+    # case 1: linear
     # pml_value = range(0, stop=pml_coef, length=pml_len);
-    # pml_value = pml_coef .* exp.(-1 ./ range(0, stop=1, length=pml_len).^1)
-    pml_value = pml_coef .* exp.(-1 ./ range(0, stop=1, length=pml_len).^2)
+    # case 2
+    pml_value = exp.(-1 ./ range(0, stop=1, length=pml_len).^1)
+    pml_value = pml_value ./ maximum(pml_value) * pml_coef
+    # case 3
+    # pml_value = exp.(-1 ./ range(0, stop=2, length=pml_len).^2)
+    # pml_value = pml_value ./ maximum(pml_value) * pml_coef
+
     Nx_pml = Nx + 2*pml_len;
     Ny_pml = Ny + 2*pml_len;
     
@@ -208,6 +225,11 @@ function acoustic_solver_no_wavefield(c, rho, Nx, dx, Ny, dy, Nt, dt, source, so
         for i = 1:receiver_num
             receiver_position_pml_vec[i] = receiver_position_pml[i,1] + (receiver_position_pml[i,2]-1)*Nx_pml
         end
+    end
+    # source integration
+    source_int = similar(source)
+    for i = 1:Nt
+        source_int[end-i+1, :] = sum(source[1:end-i+1,:], dims=1)
     end
     
     # Coef
@@ -251,16 +273,16 @@ function acoustic_solver_no_wavefield(c, rho, Nx, dx, Ny, dy, Nt, dt, source, so
     # main loop
     for iter = 2:Nt
 
-        dx_forward!(dxvx1_f, vx1, h)
-        dy_forward!(dyvy1_f, vy1, h)
-        dx_backward!(dxvx1_b, vx1, h)
-        dy_backward!(dyvy1_b, vy1, h)
+        dx_forward!(dxvx1_f, vx1, dx)
+        dy_forward!(dyvy1_f, vy1, dy)
+        dx_backward!(dxvx1_b, vx1, dx)
+        dy_backward!(dyvy1_b, vy1, dy)
 
         @. u2 = u1 + dt * (-(sigma_x+sigma_y)*u1 + b*(dxvx1_f+dyvy1_f) + phi1 + psi1)
-        u2[source_position_pml_vec] .+= source[iter,:]
+        u2[source_position_pml_vec] .+= source_int[iter,:]
 
-        dx_backward!(dxu2, u2, h)
-        dy_backward!(dyu2, u2, h)
+        dx_backward!(dxu2, u2, dx)
+        dy_backward!(dyu2, u2, dy)
 
         @. vx2 = vx1 + dt * (a*dxu2 - sigma_x*vx1)
         @. vy2 = vy1 + dt * (a*dyu2 - sigma_y*vy1)
